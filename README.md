@@ -26,7 +26,7 @@ Internet-scientific-integration/
 │   │
 │   └── country_level/
 │       ├── 00 Full script country level ...
-│       └── README.md
+│     
 │
 └── data/
     └── raw/
@@ -119,3 +119,4 @@ All regression outputs and figures are generated directly from these scripts.
 ## Data Availability
 
 Because the country-level analysis relies on SciSciNet, which is subject to data access conditions, raw bibliometric records are not publicly redistributed. This repository provides the processed datasets and full analytical code necessary to reproduce the empirical results conditional on data access.
+
