@@ -1,0 +1,1088 @@
+#-----------------------------------
+# Sub samples test
+#----------------------------------
+#--------------------
+# ---- Utilities ----
+#--------------------
+source("Scripts/utilities.R") #Libraries and functions
+#---------------------
+# Read files
+#---------------------
+# Raw
+# Input 1: Combined WoS Data 142 institutions (Output from Script 1 - Input Script 2)
+combined_wos_complete=read_csv(file.path("Outputs/WoS_USA_States_combined complete 14102025_oldcheck.csv"))
+
+# Input 2: SciSciNet codes data frame (Table provided by Alex)
+SciSciNet_Affiliations_Univ<- read_delim("Inputs/SciSciNet_Affiliations_AffiliationID_AffiliationName_USStateCode_AIGType_9199.tsv", 
+                                         delim = "\t", escape_double = FALSE, 
+                                         trim_ws = TRUE,col_names = F) 
+colnames(SciSciNet_Affiliations_Univ)=c("university_code","university_name","state_code","type")
+
+# Input 3: Data Nii by university and year
+data_tot_npub_USA142aff=read_csv(file="Outputs/Data Nii per institution USA142aff full 10222025.csv")%>% select(-c("...1"))
+# Input 4: Data Nij by university and year
+data_USA142aff=read_csv(file="Outputs/Data Nij USA142aff full 10222025.csv")%>% select(-c("...1"))
+# Input 4.5: Data Nij matrix form
+data_USA142aff_matrix= read_csv(file="Outputs/Data Nij matrix USA142aff full 10292025.csv")%>% select(-c("...1"))
+# Input 5: Data JSI_ij by university and year
+JSI_comp_USA142aff=read_csv(file="Outputs/JSI USA142aff full 10222025.csv")%>% select(-c("...1"))
+# Input 6 Distances
+Univ_distances = read_csv("Outputs/distances by pair of universities in km.csv")
+# Input 7: neighbors
+neighbors_list=read_csv(file="Outputs/Data neighbors by state USA142aff full 10232025.csv")%>% select(-c("...1"))
+colnames(neighbors_list)=c("frontiers")
+# Input 8: Universities geo location
+geo_clean=read_csv("Outputs/list of universities with their geolocation.csv")
+
+
+# Created auxiliar data frames
+# Input 1: States Coast classification
+states_df <- data.frame(
+  State_code = c("CA-USA", "NY-USA", "WDC-USA", "MA-USA", "TX-USA", "PA-USA", "IL-USA", "VA-USA",
+                 "MD-USA", "OH-USA", "FL-USA", "MI-USA", "NC-USA", "WA-USA", "NJ-USA", "GA-USA",
+                 "MN-USA", "CO-USA", "MO-USA", "WI-USA", "OR-USA", "TN-USA", "CT-USA", "IN-USA",
+                 "AL-USA", "AZ-USA", "KY-USA", "KS-USA", "IA-USA", "OK-USA", "SC-USA", "LA-USA",
+                 "UT-USA", "NE-USA", "NM-USA", "ME-USA", "AR-USA", "NH-USA", "MS-USA", "RI-USA",
+                 "HI-USA", "WV-USA", "VT-USA", "NV-USA", "AK-USA", "MT-USA", "ID-USA", "DE-USA",
+                 "SD-USA", "ND-USA", "WY-USA"),
+  Name = c("California", "New York", "District Of Columbia", "Massachusetts", "Texas", "Pennsylvania", "Illinois", "Virginia",
+           "Maryland", "Ohio", "Florida", "Michigan", "North Carolina", "Washington", "New Jersey", "Georgia",
+           "Minnesota", "Colorado", "Missouri", "Wisconsin", "Oregon", "Tennessee", "Connecticut", "Indiana",
+           "Alabama", "Arizona", "Kentucky", "Kansas", "Iowa", "Oklahoma", "South Carolina", "Louisiana",
+           "Utah", "Nebraska", "New Mexico", "Maine", "Arkansas", "New Hampshire", "Mississippi", "Rhode Island",
+           "Hawaii", "West Virginia", "Vermont", "Nevada", "Alaska", "Montana", "Idaho", "Delaware",
+           "South Dakota", "North Dakota", "Wyoming"),
+  Coast = c("West", "East", "East", "East", "None", "East", "None", "East",
+            "East", "None", "East", "None", "East", "West", "East", "East",
+            "None", "None", "None", "None", "West", "None", "East", "None",
+            "None", "West", "None", "None", "None", "None", "East", "None",
+            "None", "None", "None", "East", "None", "East", "None", "East",
+            "None", "None", "East", "None", "None", "None", "None", "East",
+            "None", "None", "None"),
+  stringsAsFactors = FALSE
+)
+# Input 2: Email Domains by university and state
+universities_df <- tribble(
+  ~State,    ~University,                                 ~Domain,
+  # Alabama
+  "Alabama", "University of Alabama at Birmingham",       "UAB.EDU",
+  "Alabama", "Auburn University",                         "AUBURN.EDU",
+  "Alabama", "University of Alabama",                     "UA.EDU",
+  # Alaska
+  "Alaska",  "University of Alaska Fairbanks",            "UAF.EDU",
+  "Alaska",  "University of Alaska Anchorage",            "UAA.ALASKA.EDU",
+  # Arizona
+  "Arizona", "Arizona State University",                  "ASU.EDU",
+  "Arizona", "University of Arizona",                     "ARIZONA.EDU",
+  "Arizona", "Northern Arizona University",               "NAU.EDU",
+  # Arkansas
+  "Arkansas","University of Central Arkansas",            "UCA.EDU",
+  "Arkansas","Arkansas State University",                 "ASTATE.EDU",
+  "Arkansas","University of Arkansas",                    "UARK.EDU",
+  # California
+  "California","University of California, Berkeley",      "BERKELEY.EDU",
+  "California","University of California, Los Angeles",   "UCLA.EDU",
+  "California","University of Southern California",       "USC.EDU",
+  # Colorado
+  "Colorado","Colorado State University",                 "COLOSTATE.EDU",
+  "Colorado","University of Colorado Boulder",            "COLORADO.EDU",
+  "Colorado","University of Colorado Denver",             "CUDENVER.EDU",
+  # Connecticut
+  "Connecticut","Yale University",                        "YALE.EDU",
+  "Connecticut","Central Connecticut State University",   "CCSU.EDU",
+  "Connecticut","University of Connecticut",              "UCONN.EDU",
+  # Delaware
+  "Delaware","Delaware State University",                 "DSC.EDU", #now it changed to "DESU.EDU"
+  "Delaware","University of Delaware",                    "UDEL.EDU",
+  # District of Columbia
+  "District Of Columbia", "George Washington University",                   "GWU.EDU",
+  "District Of Columbia", "American University",                            "AMERICAN.EDU",
+  "District Of Columbia", "Georgetown University",                          "GEORGETOWN.EDU",
+  # Florida
+  "Florida","University of Florida",                      "UFL.EDU",
+  "Florida","Florida International University",           "FIU.EDU",
+  "Florida","University of Central Florida",              "UCF.EDU",
+  # Georgia
+  "Georgia","University of Georgia",                      "UGA.EDU",
+  "Georgia","Kennesaw State University",                  "KENNESAW.EDU",
+  "Georgia","Georgia State University",                   "GSU.EDU",
+  # Hawaii
+  "Hawaii","University of Hawaii at Hilo",                "HAWAII.EDU",
+  "Hawaii","University of Hawaii at Manoa",               "HAWAII.EDU",
+  # Idaho
+  "Idaho","University of Idaho",                          "UIDAHO.EDU",
+  "Idaho","Boise State University",                       "IDBSU.EDU",
+  "Idaho","Idaho State University",                       "ISU.EDU",
+  # Illinois
+  "Illinois","University of Illinois at Urbana–Champaign","UIUC.EDU",
+  "Illinois","Northwestern University",                   "NWU.EDU",
+  "Illinois","University of Illinois at Chicago",         "UIC.EDU",
+  # Indiana
+  "Indiana","Indiana University Indianapolis", "IUPUI.EDU",
+  "Indiana","Indiana University Bloomington", "INDIANA.EDU",
+  "Indiana","Purdue University",                          "PURDUE.EDU",
+  # Iowa
+  "Iowa","University of Iowa",                            "UIOWA.EDU",
+  "Iowa","University of Northern Iowa",                   "UNI.EDU",
+  "Iowa","Iowa State University",                         "IASTATE.EDU",
+  # Kansas
+  "Kansas","Kansas State University",                     "KSU.EDU",
+  "Kansas","University of Kansas",                        "UKANS.EDU",
+  "Kansas","Wichita State University",                    "TWSU.EDU",
+  # Kentucky
+  "Kentucky","Western Kentucky University",               "WKU.EDU",
+  "Kentucky","University of Kentucky",                    "UKY.EDU",
+  "Kentucky","University of Louisville",                  "LOUISVILLE.EDU",
+  # Louisiana
+  "Louisiana","University of Louisiana at Lafayette",     "USL.EDU",
+  "Louisiana","Louisiana State University",               "LSU.EDU",
+  "Louisiana","Tulane University",                        "TULANE.EDU",
+  # Maine
+  "Maine","University of Maine",                          "MAINE.EDU",
+  "Maine","University of New England Maine",                    "UNE.EDU",
+  "Maine","University of Southern Maine",                 "USM.MAINE.EDU",
+  # Maryland
+  "Maryland","University of Maryland, College Park",      "UMD.EDU",
+  "Maryland","Towson University",                         "TOWSON.EDU",
+  "Maryland","Johns Hopkins University",                  "JHU.EDU",
+  # Massachusetts
+  "Massachusetts","University of Massachusetts Amherst",  "UMASS.EDU",
+  "Massachusetts","Boston University",                    "BU.EDU",
+  "Massachusetts","Harvard University",                   "HARVARD.EDU",
+  # Michigan
+  "Michigan","University of Michigan",                    "UMICH.EDU",
+  "Michigan","Wayne State University",                    "WAYNE.EDU",
+  "Michigan","Michigan State University",                 "MSU.EDU",
+  # Minnesota
+  "Minnesota","St. Cloud State University",               "STCLOUDSTATE.EDU",
+  "Minnesota","University of Minnesota",                  "UMN.EDU",
+  "Minnesota","Minnesota State University, Mankato",      "MANKATO.MSUS.EDU",
+  # Mississippi
+  "Mississippi","Mississippi State University",           "MSSTATE.EDU",
+  "Mississippi","University of Mississippi",              "OLEMISS.EDU",
+  "Mississippi","University of Southern Mississippi",     "USM.EDU",
+  # Missouri
+  "Missouri","University of Missouri Columbia",                    "MISSOURI.EDU",
+  "Missouri","Missouri State University",                 "SMSU.EDU",
+  "Missouri","Saint Louis University",                    "SLU.EDU",
+  # Montana
+  "Montana","Montana State University Billings",          "MSUBILLINGS.EDU",
+  "Montana","Montana State University",                   "MONTANA.EDU",
+  "Montana","University of Montana",                      "UMT.EDU",
+  # Nebraska
+  "Nebraska","University of Nebraska–Lincoln",            "UNL.EDU",
+  "Nebraska","University of Nebraska at Kearney",         "UNK.EDU",
+  "Nebraska","Creighton University",                      "CREIGHTON.EDU",
+  # Nevada
+  "Nevada","University of Nevada, Reno",                  "UNR.EDU",
+  "Nevada","University of Nevada, Las Vegas",             "UNLV.EDU",
+  # New Hampshire
+  "New Hampshire","University of New Hampshire",          "UNH.EDU",
+  "New Hampshire","Plymouth State University",            "PLYMOUTH.EDU",
+  "New Hampshire","Dartmouth College",                    "DARTMOUTH.EDU",
+  # New Jersey
+  "New Jersey","Rutgers University",                      "RUTGERS.EDU",
+  "New Jersey","Montclair State University",              "MONTCLAIR.EDU",
+  "New Jersey","Rowan University",                        "ROWAN.EDU",
+  # New Mexico
+  "New Mexico","Eastern New Mexico University",           "ENMU.EDU",
+  "New Mexico","University of New Mexico",                "UNM.EDU",
+  "New Mexico","New Mexico State University",             "NMSU.EDU",
+  # New York
+  "New York","Columbia University",                       "COLUMBIA.EDU",
+  "New York","New York University",                       "NYU.EDU",
+  "New York","University at Buffalo",                     "BUFFALO.EDU",
+  # North Carolina
+  "North Carolina","University of North Carolina at Chapel Hill","UNC.EDU",
+  "North Carolina","East Carolina University",            "ECU.EDU",
+  "North Carolina","North Carolina State University",     "NCSU.EDU",
+  # North Dakota
+  "North Dakota","University of North Dakota",            "UND.EDU",
+  "North Dakota","North Dakota State University Fargo",         "NODAK.EDU",
+  # Ohio
+  "Ohio","Kent State University",                         "KENT.EDU",
+  "Ohio","University of Cincinnati",                      "UC.EDU",
+  "Ohio","Ohio State University",                         "OSU.EDU",
+  # Oklahoma
+  "Oklahoma","Northeastern State University",             "NSUOK.EDU",
+  "Oklahoma","University of Central Oklahoma",            "UCOK.EDU",
+  "Oklahoma","University of Oklahoma",                    "OU.EDU",
+  # Oregon
+  "Oregon","University of Oregon",                        "UOREGON.EDU",
+  "Oregon","Portland State University",                   "PDX.EDU",
+  "Oregon","Oregon State University",                     "ORST.EDU",
+  # Pennsylvania
+  "Pennsylvania","Temple University",                     "TEMPLE.EDU",
+  "Pennsylvania","Pennsylvania State University",         "PSU.EDU",
+  "Pennsylvania","University of Pittsburgh",              "PITT.EDU",
+  # Rhode Island
+  "Rhode Island","University of Rhode Island",            "URI.EDU",
+  "Rhode Island","Brown University",                      "BROWN.EDU",
+  "Rhode Island","Rhode Island College",                  "RIC.EDU",
+  # South Carolina
+  "South Carolina","University of South Carolina",        "SC.EDU",
+  "South Carolina","College of Charleston",               "COFC.EDU",
+  "South Carolina","Clemson University",                  "CLEMSON.EDU",
+  # South Dakota
+  "South Dakota","South Dakota State University",         "SDSTATE.EDU",
+  "South Dakota","University of South Dakota",            "USD.EDU",
+  # Tennessee
+  "Tennessee","University of Tennessee",                  "UTK.EDU",
+  "Tennessee","Middle Tennessee State University",        "MTSU.EDU",
+  "Tennessee","University of Memphis",                    "MEMPHIS.EDU",
+  # Texas
+  "Texas","Texas A&M University",                         "TAMU.EDU",
+  "Texas","University of Texas at Austin",                "UTEXAS.EDU",
+  "Texas","University of Houston",                        "UH.EDU",
+  # Utah
+  "Utah","Utah State University",                         "USU.EDU",
+  "Utah","Brigham Young University",                      "BYU.EDU",
+  "Utah","University of Utah",                            "UTAH.EDU",
+  # Vermont
+  "Vermont","University of Vermont",                      "UVM.EDU",
+  # Virginia
+  "Virginia","Virginia Tech",                             "VT.EDU",
+  "Virginia","Virginia Commonwealth University",          "VCU.EDU",
+  "Virginia","George Mason University",                   "GMU.EDU",
+  # Washington
+  "Washington","Washington State University",             "WSU.EDU",
+  "Washington","Western Washington University",           "WWU.EDU",
+  "Washington","University of Washington",                "WASHINGTON.EDU",
+  # West Virginia
+  "West Virginia","Marshall University",                  "MARSHALL.EDU",
+  "West Virginia","West Virginia University",             "WVU.EDU",
+  # Wisconsin
+  "Wisconsin","University of Wisconsin-Madison",          "WISC.EDU",
+  "Wisconsin","Marquette University",                     "MARQUETTE.EDU",
+  "Wisconsin","University of Wisconsin–Milwaukee",        "UWM.EDU",
+  # Wyoming
+  "Wyoming","University of Wyoming",                      "UWYO.EDU"
+)
+
+universities_df <- universities_df %>%
+  mutate(
+    University = str_squish(University),
+    State = str_to_title(State)
+  ) %>% clean_names()
+
+
+#------------------------
+# Pre-processing data
+#------------------------
+# Step 1: Identify N_ii time series that are statistically 0
+not_sig_from <- find_not_significant_from(
+  df = data_tot_npub_USA142aff,
+  from_col = "from",
+  year_col = "year",
+  value_col = "tot",
+  year_min = 1985,
+  year_max = 2005,
+  fdr_level = 0.05
+)
+
+# Step 2: Filter "base data frame: data_USA142aff (Nij)" and create auxiliar variables
+# Auxiliar variables:
+# 1. Within state: same_state --> step 9
+# 2. Coast link: link_coast --> steps 5 and 6
+
+data_USA142aff_1985=
+  data_USA142aff%>% 
+  # 0. filter universites with N_ii time series is different from 0
+  filter(!from%in%not_sig_from&!to%in%not_sig_from) %>% 
+  # 1. filter 1985<year<2005 
+  filter(Year>=1985&Year<=2005) %>%
+  # 2. filter from==to 
+  filter(from!=to) %>% 
+  # 3. create key: unique identifier using university code from SciSciNet
+  mutate(edge_code=paste0(code_min,"_",code_max)) %>% 
+  # 4. Remove duplicates using the key
+  distinct(Year, edge_code,code_min, code_max, .keep_all = TRUE) %>%
+  # 5. add coast for university from
+  left_join(states_df %>% select(-Name),by=c("state_code_from"="State_code")) %>% 
+  rename("coast_from"="Coast") %>% 
+  # 6. add coast for university to
+  left_join(states_df %>% select(-Name),by=c("state_code_to"="State_code")) %>% 
+  rename("coast_to"="Coast") %>% 
+  # 7. create variable link coast
+  mutate(coast_min=pmin(coast_from,coast_to),
+         coast_max=pmax(coast_from,coast_to),
+         link_coast=paste0(coast_min,"_",coast_max))%>% 
+  # 8. Arrange by year
+  arrange(Year) %>% 
+  # 9. Creat variable within/across state
+  mutate(same_state=ifelse(state_code_from==state_code_to,1,0))
+  #group_by(edge_code) %>% summarise(years=n_distinct(Year)) %>% View()
+
+# Step 3: Compute the Jsi from Nij values 
+JSI_comp_USA142aff_1985=JSI_matrix(data_USA142aff_matrix %>% 
+                                     filter(year>=1985&year<=2005))%>%
+  filter(!from%in%not_sig_from&!to%in%not_sig_from) %>%
+  arrange(Year) %>% mutate(weight=ifelse(is.na(weight),0,weight)) %>% 
+  left_join(SciSciNet_Affiliations_Univ,by=c("from"="university_name")) %>% 
+  rename("university_code_from"="university_code","state_code_from"="state_code") %>% 
+  left_join(SciSciNet_Affiliations_Univ,by=c("to"="university_name")) %>% 
+  rename("university_code_to"="university_code","state_code_to"="state_code") %>% 
+  mutate(
+    code_min = as.character(pmin(university_code_from, university_code_to, na.rm = TRUE)),
+    code_max = as.character(pmax(university_code_from, university_code_to, na.rm = TRUE))
+  ) %>% 
+  # 3. create key: unique identifier using university code from SciSciNet
+  mutate(edge_code=paste0(code_min,"_",code_max))
+
+# Step 4: add JSI values to the "base data frame: data_USA142aff_1985 (Nij)"
+data_USA142aff_1985=
+  data_USA142aff_1985 %>% 
+  left_join(JSI_comp_USA142aff_1985 %>%
+              # 0. Remove duplicates using the key
+              distinct(Year, edge_code,code_min, code_max, .keep_all = TRUE) %>% 
+              select(Year,edge_code,weight),
+            by=c("edge_code","Year"))
+
+
+# Step 5: Identify email in "WoS dataframe: combined_wos_complete" and
+# create auxiliar variables: first_instance_year and year_at_threshold
+WOS_email_data=
+  combined_wos_complete %>%
+    clean_names()%>%
+    # 0 Merge combined_wos_complete with SciScinet dataframe to correct names
+    left_join(SciSciNet_Affiliations_Univ %>% 
+                select(-c(type)),by=c("university_code")) %>% 
+    # 1. filter universites with N_ii time series is different from 0
+    filter(!university%in%not_sig_from) %>% 
+    # 2. clean text in university and state columns
+    mutate(
+    university = str_squish(university),
+    state = str_to_title(state)
+    ) %>% 
+    # 3. merge with universities_df data frame to add the domain of each university
+    left_join(universities_df,by=c("state","university")) %>%
+    # 4. upper case email and domain for correct match
+    mutate(
+    em     = toupper(em),
+    domain = toupper(domain)
+    ) %>%
+    # 5. literal search of the domain in the EM column by row
+    rowwise() %>%
+    mutate(
+    em_un = as.integer(str_detect(em, fixed(domain)))
+    ) %>%
+    ungroup()
+
+# Step 6: From WOS_email_data create Univ_WoS_first_year with the auxiliary variables: 
+# first_year_email and year_at_threshold for each threshold
+
+thresholds <- c(0.001)
+# grouping keys
+group_vars <- c("state","university","university_name","university_code")
+
+Univ_WoS_first_year= 
+  WOS_email_data %>%
+  group_by(across(all_of(group_vars)), py) %>%
+  summarise(
+    n_rows=n(),
+    n_emails=sum(em_un,na.rm = T))%>%
+  mutate(n_emails = dplyr::coalesce(n_emails, 0L)) %>%
+  arrange(across(all_of(group_vars)), py) %>%
+  group_by(across(all_of(group_vars))) %>%
+  mutate(
+    first_year_email = {
+      yrs <- py[n_emails > 0]
+      if (length(yrs)) min(yrs) else NA_integer_
+    },
+    total_emails = sum(n_emails, na.rm = TRUE),
+    cum_emails   = cumsum(n_emails),
+    pct_emails   = dplyr::if_else(total_emails > 0, cum_emails / n_rows, NA_real_)
+  ) %>%
+  ungroup() %>%
+  select(all_of(group_vars), py, pct_emails, first_year_email) %>%
+  tidyr::crossing(threshold = thresholds) %>%                 # add thresholds
+  group_by(across(all_of(group_vars)), threshold) %>%
+  filter(!is.na(pct_emails) & pct_emails >= threshold) %>%
+  summarise(
+    year_at_threshold = min(py),
+    first_year_email  = dplyr::first(first_year_email),
+    .groups = "drop"
+  )
+
+# Step 7: Add first_year_email and year_at_threshold for each threshold variables
+# to the base data frame "base data frame: data_USA142aff (Nij)"
+data_USA142aff_1985=
+  data_USA142aff_1985 %>% 
+  # Step 1: Merge with first email data frame using SciSciNet code: --> Add Min year Email first instance 
+  left_join(Univ_WoS_first_year %>% clean_names() %>% select(-c(state,university,university_name)),
+            by=c("university_code_from"="university_code")) %>%
+  rename("first_year_email_from"="first_year_email","year_at_threshold_from"="year_at_threshold") %>%
+  left_join(Univ_WoS_first_year %>% clean_names() %>% select(-state,-university,-university_name),
+            by=c("university_code_to"="university_code","threshold")) %>% 
+  rename("first_year_email_to"="first_year_email","year_at_threshold_to"="year_at_threshold")
+  
+# Step 8: Compute Edge page rank from Nij data frame when Nij>0 and add to base data frame
+centrality <- compute_centrality_by_year(data_USA142aff_1985 %>% clean_names())
+
+data_USA142aff_1985=
+  data_USA142aff_1985 %>% 
+  # Step 1: merge with edge page rank data frame: --> Add edge page rank variable 
+  left_join(centrality  %>% 
+              select(c(edge,edge_page_rank,year)),
+            by=c("edge_code"="edge","Year"="year")) %>% 
+    mutate(edge_page_rank=ifelse(is.na(edge_page_rank),0,edge_page_rank))
+
+# Step 9: Add Nii for from and to, and add distance
+data_USA142aff_1985=
+  data_USA142aff_1985 %>% left_join(data_tot_npub_USA142aff,by=c("from","Year"="year")) %>% 
+  rename("Nii_from"="tot") %>%
+  left_join(data_tot_npub_USA142aff,by=c("to"="from","Year"="year")) %>% 
+  rename("Nii_to"="tot")%>% 
+  # Step 2: Merge with distance data frame using SciSciNet code: --> Add distances in Km by pair of universities 
+  left_join(Univ_distances %>%
+              select(university_code_from,university_code_to,distance_km),
+            by=c("university_code_from","university_code_to"))
+  
+
+# Step 11: # Create extra variables
+data_USA142aff_1985=data_USA142aff_1985 %>% 
+  # Step 1: create internet variables (using first year and also the different thresholds)
+  mutate(Internet_first_instance=ifelse(Year>=pmax(first_year_email_from,first_year_email_to),1,0),
+         Internet_by_threshold=ifelse(Year>=pmax(year_at_threshold_from,year_at_threshold_to),1,0)) %>%
+  # Step 2: Scale distance
+  mutate(scaled_km=distance_km/max(distance_km)) %>% 
+  # Step 3: Add frontiers variable
+  mutate(frontiers=ifelse(paste0(state_code_from,"_",state_code_to)%in%neighbors_list$frontiers,1,0))
+
+#-----------------------------------------------------------
+# Descriptive analysis
+#-----------------------------------------------------------
+# Figure 1. staggered treatment effect
+#-------------
+# Part A: Map
+options(tigris_use_cache = TRUE)
+
+# -----------------------------
+# 1) Prepare our data
+# -----------------------------
+df <- Univ_WoS_first_year %>% select(-threshold,-year_at_threshold) %>% 
+  left_join(data_tot_npub_USA142aff,by=c("university_name"="from","first_year_email"="year")) %>% 
+  left_join(states_df,by=c("state"="Name")) %>% 
+  left_join(geo_clean %>% select(-university),by=c("university_code","state")) %>% 
+  clean_names() %>%
+  mutate(
+    state     = str_to_title(state),
+    Coast     = str_to_title(coast),           # e.g., "West", "East", "None"
+    tot       = as.numeric(tot)
+  )
+
+# Coast per state (mode across the state's universities)
+state_coast <- df %>%
+  group_by(state) %>%
+  summarise(Coast_state = mode_value(Coast), .groups = "drop")
+
+# -----------------------------
+# 2) Get US states geometry (50 + DC) and join Coast
+# -----------------------------
+crs_us <- 5070  # NAD83 / Conus Albers, good for CONUS mapping
+
+us_states <- states(cb = TRUE, year = 2023) %>%
+  st_as_sf() %>%
+  filter(STUSPS %in% c(state.abb, "DC")) %>%   # keep 50 states + DC
+  select(STUSPS, NAME, geometry) %>%
+  st_transform(crs_us) %>%
+  mutate(state = str_to_title(NAME))
+
+states_map <- us_states %>%
+  left_join(state_coast, by = "state")
+
+# -----------------------------
+# 3) Make sf points from your universities
+# -----------------------------
+pts <- df %>%
+  filter(!is.na(latitude), !is.na(longitude)) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>%
+  st_transform(crs_us)
+
+# -----------------------------
+# 4) Plot
+# -----------------------------
+# Define a simple palette for Coast categories (adjust if you have more)
+coast_levels <- c("West","East","None")
+coast_colors <- c("West" = "#1f77b4",   # blue
+                  "East" = "#d62728",   # red
+                  "None" = "darkgrey")   # gray
+
+p <- ggplot() +
+  # states filled by Coast
+  geom_sf(
+    data  = states_map%>% 
+      filter(state!="Alaska"&state!="Hawaii"),
+    aes(fill = factor(Coast_state, levels = coast_levels)),
+    color = "white", linewidth = 0.25
+  ) +
+  # university points sized by tot
+  geom_sf(
+    data  = pts%>% 
+      filter(state!="Alaska"&state!="Hawaii"),
+    aes(size = tot),
+    alpha = 0.7,
+    color = "darkgoldenrod4"
+  ) +
+  scale_fill_manual(
+    name = "Coast (state)",
+    values = coast_colors,
+    drop = FALSE,
+    na.value = "grey90"
+  ) +
+  scale_size_area(
+    name = "Publications (tot)",
+    max_size = 30,
+    breaks = scales::pretty_breaks(4)
+  ) +
+  coord_sf(crs = crs_us) +
+  labs(
+    title = "US states colored by Coast, with university points",
+    subtitle = "Fill = Coast (state-level mode). Points at each university; size = tot (publications).",
+    caption = "Geometry: TIGER/Line® via tigris"
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    legend.position  = "none",
+    panel.grid.major = element_line(color = "grey90"),
+    axis.text        = element_blank(),
+    axis.title       = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+p
+ggsave(filename = "Figures/Figure 1A usa map with universities and states 11102025 op2.pdf",
+       plot = p,
+       width = 20,                         # Specify the width in inches
+       height = 12,                        # Specify the height in inches
+       units = "in")
+
+
+# Part B:
+# install.packages(c("tidyverse","forcats","ggtext"))  # first time only
+library(tidyverse)
+library(forcats)
+library(ggtext)
+
+# --- Prepare data ---
+coast_colors <- c(West = "#1f77b4", East = "#d62728", None = "darkgrey")
+
+df2 <- df %>%
+  mutate(
+    first_year_email = as.integer(first_year_email),
+    Coast            = str_to_title(Coast),
+    # order universities by their min first year
+    university       = fct_reorder(paste0(state,"-",university), first_year_email, .fun = min)
+  )
+
+# Build a named vector of HTML-styled labels to color the y-axis by Coast
+y_labels <- df2 %>%
+  mutate(Coast = tidyr::replace_na(Coast, "None")) %>%
+  group_by(university) %>%
+  summarise(Coast = dplyr::first(na.omit(Coast)), .groups = "drop") %>%
+  mutate(lbl = sprintf("<span style='color:%s'>%s</span>",
+                       coast_colors[Coast], university)) %>%
+  select(university, lbl) %>%          # <-- exactly two columns
+  tibble::deframe()                    # names = university, values = lbl
+
+# --- Plot ---
+df2 %>% mutate(
+  Coast = str_to_title(Coast),
+  Coast = factor(Coast, levels = names(coast_colors))  # niveles alineados
+  ) %>% 
+  ggplot(aes(x = first_year_email, y = university, color = Coast, size = tot)) +
+  geom_point(alpha = 0.6, show.legend = FALSE) +
+  scale_color_manual(values = coast_colors, drop = FALSE, na.value = "grey9") +  # <-- clave
+  scale_x_continuous(breaks = seq(1991, 1999, 1), limits = c(1991, 1999), minor_breaks = NULL) +
+  scale_y_discrete(labels = y_labels) +
+  theme_classic() +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    axis.text.x  = element_text(size = 45, face = "bold"), 
+    axis.text.y  = ggtext::element_markdown(size =30, lineheight = 1.0),  # tamaño ticks eje Y (coloreados)
+    axis.title.x = element_text(size = 100, face = "bold"),         # etiqueta eje X
+    axis.title.y = element_text(size = 100, face = "bold"),          # etiqueta eje Y
+    plot.margin = margin(t = 1, r = 1, b = 0, l = 0.1, unit = "cm")
+  ) +
+  labs(x = "", y = "")+
+  scale_size_continuous(range = c(3, 25))
+
+ggsave(filename = "Figures/Figure 1B internet by university 11102025 op2.pdf",
+       width = 49,                         # Specify the width in inches
+       height = 39,                        # Specify the height in inches
+       units = "in")
+
+
+#----------------------------
+# Figure 2: dif in dif modeling
+#----------------------------
+#---------------
+# Increase threshold in Nii
+#--------------------------
+max_999_npub=data_tot_npub_USA142aff %>% filter(!from%in%not_sig_from) %>% 
+  group_by(from) %>% summarise(min=min(tot),
+                               max=max(tot),
+                               mean=mean(tot)) %>% 
+  filter(mean<1000) %>% 
+  select(from) %>% unique() %>% pull()
+
+results <- run_did2s_analysis(
+  data_raw = data_USA142aff_1985 %>% 
+    filter(!from%in%max_999_npub&!to%in%max_999_npub) %>% 
+    mutate(link_coast = factor(link_coast,
+                               levels = c("East_East", setdiff(unique(link_coast), "East_East")))),
+  y_col = "weight",
+  treatment_col = "Internet_first_instance",#"Internet_first_instance","Internet_by_threshold"
+  unit_col = "edge_code",
+  time_col = "Year",
+  real_time_col = "real_time",
+  truncate = TRUE,
+  max_year = 1998,
+  min_year = 1985,
+  y_lim=c(-0.001,0.001),
+  x_lim=c(-5,5),
+  controls = T,
+  time_indep_controls = c("scaled_km","frontiers"),
+  time_dep_controls = c("edge_page_rank","link_coast")
+)
+
+# Graph for the static plot
+results$static_plot
+df_plot <- results$static_plot$prms
+
+# Convertimos x a numérico si no lo es (por seguridad)
+df_plot <- df_plot %>%
+  mutate(x = as.numeric(x))%>%
+  filter(x==1)
+
+
+# Gráfico Static plot
+ggplot(df_plot, aes(x = x, y = estimate)) +
+  geom_point(color = "blue", size = 5) +  # estimación puntual
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0.003, color = "skyblue", size = 2) +  # IC
+  # geom_vline(xintercept = 0, linetype = "dashed", color = "black") +  # línea del tratamiento
+  geom_hline(yintercept = 0, color = "black") +  # línea de referencia
+  labs(
+    x = "Relative Time to Treatment",
+    y = "Estimated Effect with 95% CI",
+    title = "Event Study: Staggered Treatment Effect"
+  )+
+  #geom_vline(xintercept = 0.5, color = "black") +
+  theme_classic()+
+  scale_x_continuous(breaks = c( 1))+
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        axis.text.x = element_blank(), 
+        axis.text.y = element_text(size = 50, face = "bold"), 
+        axis.title = element_blank(),
+        legend.title = element_blank(),
+        plot.margin = margin(t = 1, r = 6, b = 1, l = 6, unit = "cm"),
+        #strip.text = element_text(size = 10, face = "bold"),
+        #legend.text = element_text(size = 100, face = "bold"),
+        #legend.position = "none"
+  )
+#---------------------------------
+# Graph for the case event plot
+#---------------------------------
+results$event_study_plot
+df_plot <- results$event_study_plot$prms
+
+# Convertimos x a numérico si no lo es (por seguridad)
+df_plot <- df_plot %>%
+  mutate(x = as.numeric(x))
+
+
+# Gráfico estilo event study
+df_plot%>%
+  mutate(ci_low=ifelse(x==-1,NA,ci_low),
+         ci_high=ifelse(x==-1,NA,ci_high))%>%
+  ggplot(aes(x = x, y = estimate)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0.8, color = "skyblue", size = 2) +  # IC
+  geom_point(color = "blue", size = 5) +  # estimación puntual
+  # geom_vline(xintercept = 0, linetype = "dashed", color = "black") +  # línea del tratamiento
+  geom_hline(yintercept = 0, color = "black") +  # línea de referencia
+  labs(
+    x = "Relative Time to Treatment",
+    y = "Estimated Effect with 95% CI",
+    title = "Event Study: Staggered Treatment Effect"
+  )+
+  geom_vline(xintercept = -0.5, color = "black") +
+  theme_classic()+
+  scale_x_continuous(breaks = seq(-5, 5, 1), expand = expansion(mult = 0.02)) +
+  coord_cartesian(xlim = c(-10, 10), ylim = c(-0.0001, 0.0008))+
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        axis.text.x = element_text(size = 30, face = "bold"), 
+        axis.text.y = element_text(size = 30, face = "bold"), 
+        axis.title = element_blank(),
+        legend.title = element_blank(),
+        #strip.text = element_text(size = 10, face = "bold"),
+        #legend.text = element_text(size = 100, face = "bold"),
+        #legend.position = "none"
+  )
+
+
+#--------------------
+# Placebo
+#--------------------
+data_placebo=
+  data_USA142aff_1985 %>% 
+  filter(!from%in%max_999_npub&!to%in%max_999_npub) %>% 
+  filter(Internet_first_instance!=1) %>% 
+  mutate(complies_from=ifelse(Year>=first_year_email_from,1,0),
+         complies_to=ifelse(Year>=first_year_email_to,1,0),
+         placebo_int=complies_from+complies_to) %>% 
+  mutate(link_coast = factor(link_coast,
+                             levels = c("East_East", setdiff(unique(link_coast), "East_East"))))
+
+
+results <- run_did2s_analysis(
+  data_raw = data_placebo,
+  y_col = "weight",
+  treatment_col = "placebo_int",#"Internet_first_instance","Internet_by_threshold"
+  unit_col = "edge_code",
+  time_col = "Year",
+  real_time_col = "real_time",
+  truncate = TRUE,
+  max_year = 1998,
+  min_year = 1985,
+  y_lim=c(-0.001,0.001),
+  x_lim=c(-5,5),
+  controls = T,
+  time_indep_controls = c("scaled_km","frontiers"),
+  time_dep_controls = c("edge_page_rank","link_coast")
+)
+
+#---------------------------------
+# Graph for the case event plot
+#---------------------------------
+results$event_study_plot
+df_plot_placebo <- results$event_study_plot$prms
+
+
+# Convertimos x a numérico si no lo es (por seguridad)
+df_plot_placebo <- df_plot_placebo %>%
+  mutate(x = as.numeric(x))
+
+
+# Gráfico estilo event study
+df_plot%>%
+  filter(x>=-5&x<=5)%>%
+  mutate(ci_low=ifelse(x==-1,NA,ci_low),
+         ci_high=ifelse(x==-1,NA,ci_high))%>%
+  ggplot(aes(x = x, y = estimate)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0.5, color = "#1E90FF", size = 4) +  # IC
+  geom_point(color = "darkblue", size = 8) +  # estimación puntual
+  # Placebo
+  geom_errorbar(data = df_plot_placebo%>%
+                  filter(x!=-1&x>=-5&x<=5),
+                aes(ymin = ci_low, ymax = ci_high), width = 0.8, color = "darkred", size = 2,alpha=0.3) +  # IC
+  geom_point(data = df_plot_placebo%>%
+               filter(x!=-1&x>=-5&x<=5),
+             aes(x = x, y = estimate),color = "darkred", size = 5,alpha=0.45) +  # estimación puntual
+  # geom_vline(xintercept = 0, linetype = "dashed", color = "black") +  # línea del tratamiento
+  geom_hline(yintercept = 0, color = "black") +  # línea de referencia
+  labs(
+    x = "Relative Time to Treatment",
+    y = "Estimated Effect with 95% CI",
+    title = ""
+  )+
+  geom_vline(xintercept = -0.5, color = "black") +
+  theme_classic()+
+  scale_x_continuous(breaks = seq(-5, 5, 1)) +
+  coord_cartesian(xlim = c(-5, 5), ylim = c(-0.0004, 0.001))+
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        axis.text.x = element_text(size = 50, face = "bold"), 
+        axis.text.y = element_text(size = 50, face = "bold"), 
+        axis.title = element_blank(),
+        legend.title = element_blank(),
+        plot.margin = margin(t = 1, r = 1, b = 1, l = 1, unit = "cm"),
+        #strip.text = element_text(size = 10, face = "bold"),
+        #legend.text = element_text(size = 100, face = "bold"),
+        #legend.position = "none"
+  )
+
+ggsave("Figures/Figure 2B event time plot with placebo 11052025.pdf",
+       width = 45,                         # Specify the width in inches
+       height = 25,                        # Specify the height in inches
+       units = "in")
+
+
+#------------------------
+# Figure 3
+#------------------------
+#------------------------
+# Modeling lm
+#------------------------
+data_JSI=data_USA142aff_1985 %>%
+  filter(!from%in%max_999_npub&!to%in%max_999_npub) %>% 
+  mutate(same_coast=ifelse(coast_from==coast_to,1,0)) %>% 
+  mutate(link_coast = factor(link_coast,
+                             levels = c("East_East", setdiff(unique(link_coast), "East_East"))))
+
+data_regression=NULL
+data_regression_full=NULL
+limits_data=NULL
+
+years=unique(data_USA142aff_1985$Year)
+
+for (yr in years) {
+  #yr=years[9]
+  dat=data_JSI%>% filter(Year==yr&weight>0) 
+  
+  #summary(dat$edge_page_rank)
+  
+  #prop.table(table(dat$Internet_first_instance))
+  fit=lm(weight~edge_page_rank+Internet_first_instance+scaled_km+frontiers+link_coast,data=dat)
+  #summary(fit)
+  
+  #cor(dat$weight,dat$edge_page_rank)
+  #cor(dat$weight,dat$Internet)
+  
+  #summary(fit1)
+  #summary(dat$weight)
+  #shapiro.test(dat$weight)
+  # Collect model statistics
+  data_regression  <- data.frame(
+    Estimate = ifelse(is.na(fit$coefficients), NA, fit$coefficients),
+    coeff_name = rownames(data.frame(fit$coefficients)),
+    Year = ifelse(is.na(fit$coefficients), NA, yr),
+    p_value = ifelse(is.na(fit$coefficients), NA, summary(fit)$coefficients[, 4]),
+    r2 = ifelse(is.na(fit$coefficients), NA, summary(fit)$r.squared),
+    r2_adj = ifelse(is.na(fit$coefficients), NA, summary(fit)$adj.r.squared),
+    f_stat = ifelse(is.na(fit$coefficients), NA, summary(fit)$fstatistic[1])
+  )
+  
+  data_regression_full <- data_regression_full %>%
+    bind_rows(data_regression)
+  
+  limits_data <- bind_rows(
+    limits_data,
+    data.frame(confint.lm(fit)) %>%
+      mutate(coeff_name = rownames(data.frame(confint.lm(fit))), Year = yr) %>%
+      rename(linf = "X2.5..", lsup = "X97.5..")
+  )
+  
+  print(yr)
+  
+  
+}
+
+
+data_regression_full=data_regression_full%>%left_join(limits_data,by=c("coeff_name","Year"))%>%
+  mutate(significance=ifelse(p_value<0.05,"Yes","No"))
+#------------------------------------
+# Fig. 3 Part A: Edge Page Rank
+#------------------------------------
+data_regression_full %>%
+  #mutate(Estimate=ifelse(coeff_name=="Internet"&Year%in%c(1994,1995),NA,Estimate))%>%
+  filter(coeff_name%in%c("edge_page_rank"))%>%
+  ggplot(aes(x = Year, y = Estimate, color = coeff_name)) + 
+  geom_line(size = 15,color="#d62728") +
+  #scale_color_manual(values = colors, labels = legend_labels)+
+  labs(y = "Estimation of model coefficients", color = "Explanatory variables") + 
+  theme_classic() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        legend.title = element_blank(), # Set legend title size
+        legend.text = element_text(size = 20, face = "bold"),
+        axis.title.x = element_blank(), # Increase x-axis title size
+        axis.title.y = element_blank(), # Increase y-axis title size
+        axis.text.x = element_text(size = 100, face = "bold"), 
+        axis.text.y = element_text(size = 100, face = "bold"),
+        legend.position = "none",
+        plot.margin = margin(t = 1, r = 5, b = 1, l = 1, unit = "cm"),
+  ) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 1995) +
+  scale_x_continuous(#guide = "prism_minor", 
+    limits = c(1985, 2005),
+    expand = c(0, 0),
+    minor_breaks = seq(1985, 2005, 1)) +
+  geom_point(data = data_regression_full %>%
+               filter(coeff_name%in%c("edge_page_rank"))%>%
+               mutate(p05 = ifelse(p_value < 0.05, Estimate, NA)),
+             aes(x = Year, y = p05), color="#d62728",size=25) +
+  #scale_color_manual(values = colors,labels = legend_labels) +  # Apply manual color palette
+  theme(axis.title.x = element_blank())   # Remove X-axis label
+#scale_y_continuous(breaks = seq(floor(min_estimate - 0.005), ceiling(max_estimate + 0.005), by = 0.005))
+
+ggsave("Figures/Figure 3A model coefficients edge pagerank 11052025.pdf",
+       width = 40,                         # Specify the width in inches
+       height = 40,                        # Specify the height in inches
+       units = "in")
+
+#--------------------------------------------
+# Fig. 3 Part B: Internet
+#--------------------------------------------
+unique(data_regression_full$coeff_name)
+
+colors <- c(
+  "(Intercept)" = "#4a4a4a",                          # Dark Gray
+  "frontiers" = "#2ca02c",                   # Medium Green
+  #"GN1" = "#1f77b4",  # Dark Blue
+  "same_coast" = "darkblue",  # Dark Blue
+  "scaled_km" = "#9467bd",                               # Medium Purple
+  "edge_page_rank" = "#d62728",
+  "Internet_first_instance"="cyan",
+  "link_coastNone_West"="#9ECAE1",
+  "link_coastNone_None"="darkgrey",
+  "link_coastEast_None"="#F6C141",
+  "link_coastWest_West"="#1f77b4", 
+  "link_coastEast_West"="deeppink4"
+)
+
+data_regression_full %>%
+  mutate(Estimate=ifelse(coeff_name=="Internet_first_instance"&Year%in%c(1991,1992),NA,Estimate))%>%
+  filter(coeff_name%in%c("Internet_first_instance"))%>%
+  ggplot(aes(x = Year, y = Estimate, color = coeff_name)) + 
+  geom_line(size = 15) +
+  scale_color_manual(values = colors)+
+  labs(y = "Estimation of model coefficients", color = "Explanatory variables") + 
+  theme_classic() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        legend.title = element_blank(), # Set legend title size
+        legend.text = element_text(size = 30, face = "bold"),
+        axis.title.x = element_blank(), # Increase x-axis title size
+        axis.title.y = element_blank(), # Increase y-axis title size
+        axis.text.x = element_text(size = 100, face = "bold"), 
+        axis.text.y = element_text(size = 100, face = "bold"),
+        legend.position = "none",
+        plot.margin = margin(t = 1, r = 5, b = 1, l = 1, unit = "cm"),
+        
+  ) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 1995) +
+  scale_x_continuous(guide = "prism_minor", 
+    limits = c(1985, 2005),
+    expand = c(0, 0),
+    minor_breaks = seq(1985, 2005, 1)) +
+  geom_point(data = data_regression_full %>%
+               mutate(Estimate=ifelse(coeff_name=="Internet_first_instance"&Year%in%c(1991,1992),NA,Estimate))%>%
+               filter(coeff_name%in%c("Internet_first_instance"))%>%
+               mutate(p05 = ifelse(p_value < 0.05, Estimate, NA)),
+             aes(x = Year, y = p05, color = coeff_name),size=25) +
+  #scale_color_manual(values = colors,labels = legend_labels) +  # Apply manual color palette
+  theme(axis.title.x = element_blank())   # Remove X-axis label
+#scale_y_continuous(breaks = seq(floor(min_estimate - 0.005), ceiling(max_estimate + 0.005), by = 0.005))
+
+
+ggsave("Figures/Figure 3B model other coefficients internet 11042025.pdf",
+       width = 40,                         # Specify the width in inches
+       height = 40,                        # Specify the height in inches
+       units = "in")
+
+
+#--------------------------------------------
+# Fig. 3 Part c: Link coast and frontiers
+#--------------------------------------------
+data_regression_full %>%
+  #mutate(Estimate=ifelse(coeff_name=="Internet_first_instance"&Year%in%c(1991,1992),NA,Estimate))%>%
+  filter(!coeff_name%in%c("edge_page_rank","(Intercept)",
+                          "Internet_first_instance","scaled_km"))%>%
+  ggplot(aes(x = Year, y = Estimate, color = coeff_name)) + 
+  geom_line(size = 15) +
+  scale_color_manual(values = colors)+
+  labs(y = "Estimation of model coefficients", color = "Explanatory variables") + 
+  theme_classic() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        legend.title = element_blank(), # Set legend title size
+        legend.text = element_text(size = 30, face = "bold"),
+        axis.title.x = element_blank(), # Increase x-axis title size
+        axis.title.y = element_blank(), # Increase y-axis title size
+        axis.text.x = element_text(size = 100, face = "bold"), 
+        axis.text.y = element_text(size = 100, face = "bold"),
+        legend.position = "none",
+        plot.margin = margin(t = 1, r = 5, b = 1, l = 1, unit = "cm"),
+        
+  ) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 1995) +
+  scale_x_continuous(guide = "prism_minor", 
+    limits = c(1985, 2005),
+    expand = c(0, 0),
+    minor_breaks = seq(1985, 2005, 1)) +
+  geom_point(data = data_regression_full %>%
+               #mutate(Estimate=ifelse(coeff_name=="Internet_first_instance"&Year%in%c(1991,1992),NA,Estimate))%>%
+               filter(!coeff_name%in%c("edge_page_rank","(Intercept)",
+                                       "Internet_first_instance","scaled_km"))%>%
+               mutate(p05 = ifelse(p_value < 0.05, Estimate, NA)),
+             aes(x = Year, y = p05, color = coeff_name),size=25) +
+  #scale_color_manual(values = colors,labels = legend_labels) +  # Apply manual color palette
+  theme(axis.title.x = element_blank())   # Remove X-axis label
+#scale_y_continuous(breaks = seq(floor(min_estimate - 0.005), ceiling(max_estimate + 0.005), by = 0.005))
+
+
+ggsave("Figures/Figure 3C model other coefficients frontiers and link coast 11102025.pdf",
+       width = 40,                         # Specify the width in inches
+       height = 40,                        # Specify the height in inches
+       units = "in")
+
+#--------------------------------------------
+# Fig. 3 Part D: Distance
+#--------------------------------------------
+data_regression_full %>%
+  filter(coeff_name%in%c("scaled_km"))%>%
+  ggplot(aes(x = Year, y = Estimate, color = coeff_name)) + 
+  geom_line(size = 15) +
+  scale_color_manual(values = colors)+
+  labs(y = "Estimation of model coefficients", color = "Explanatory variables") + 
+  theme_classic() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        legend.title = element_blank(), # Set legend title size
+        legend.text = element_text(size = 30, face = "bold"),
+        axis.title.x = element_blank(), # Increase x-axis title size
+        axis.title.y = element_blank(), # Increase y-axis title size
+        axis.text.x = element_text(size = 100, face = "bold"), 
+        axis.text.y = element_text(size = 100, face = "bold"),
+        legend.position = "none",
+        plot.margin = margin(t = 1, r = 5, b = 1, l = 1, unit = "cm"),
+        
+  ) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 1995) +
+  scale_x_continuous(#guide = "prism_minor", 
+    limits = c(1985, 2005),
+    expand = c(0, 0),
+    minor_breaks = seq(1985, 2005, 1)) +
+  geom_point(data = data_regression_full %>%
+               filter(coeff_name%in%c("scaled_km"))%>%
+               mutate(p05 = ifelse(p_value < 0.05, Estimate, NA)),
+             aes(x = Year, y = p05, color = coeff_name),size=25) +
+  #scale_color_manual(values = colors,labels = legend_labels) +  # Apply manual color palette
+  theme(axis.title.x = element_blank())   # Remove X-axis label
+#scale_y_continuous(breaks = seq(floor(min_estimate - 0.005), ceiling(max_estimate + 0.005), by = 0.005))
+
+
+ggsave("Figures/Figure 3D model other coefficients scaled_km 11052025.pdf",
+       width = 40,                         # Specify the width in inches
+       height = 40,                        # Specify the height in inches
+       units = "in")
+
+
+
+
+#----------------------------
+# Analysis of real univ we are considering
+#-----------------------------------------
+Univ_WoS_first_year %>% group_by(state) %>% summarise(count_initial=n()) %>% 
+  left_join(data_USA142aff_1985 %>% 
+              filter(!from%in%max_999_npub&!to%in%max_999_npub) %>%
+              select(state_code_from,from) %>% unique() %>% 
+              bind_rows(data_USA142aff_1985 %>% filter(!from%in%max_999_npub&!to%in%max_999_npub) %>%
+                          select(state_code_to,to) %>% unique() %>% 
+                          rename("from"="to","state_code_from"="state_code_to")) %>% 
+              distinct() %>% group_by(state_code_from) %>% summarise(count=n()) %>%
+              left_join(states_df,by=c("state_code_from"="State_code")),by=c("state"="Name")) %>% 
+  View()
+
+
+a=data_USA142aff_1985 %>% 
+  filter(!from%in%max_999_npub&!to%in%max_999_npub) %>%
+  select(state_code_from,from) %>% unique() %>% 
+  bind_rows(data_USA142aff_1985 %>% filter(!from%in%max_999_npub&!to%in%max_999_npub) %>%
+              select(state_code_to,to) %>% unique() %>% 
+              rename("from"="to","state_code_from"="state_code_to")) %>% 
+  distinct() %>% group_by(state_code_from) %>% summarise(count=n()) %>%
+  left_join(states_df,by=c("state_code_from"="State_code"))
+
+sum(a$count)
+
+Univ_WoS_first_year %>% group_by(state) %>% summarise(count=n())
