@@ -1693,3 +1693,224 @@ ggsave("Figures draft/Figure Extra JSI Average.pdf",
        height = 45,                        # Specify the height in inches
        units = "in")
 
+#----------------------------------------
+# Extra Figure internet by threshold
+#---------------------------------------------
+library(dplyr)
+library(ggplot2)
+
+# ---- 1) Paleta fija por continente (así queda consistente entre thresholds)
+continent_colors <- c(
+  "Asia" = "#FF3030",
+  "Europe" = "#1E90FF",
+  "North America" = "#698B22",
+  "Africa" = "#FFD700",
+  "Antarctica" = "#BF3EFF",
+  "South America" = "#FF8C00",
+  "Oceania" = "cyan1"
+)
+
+# ---- 2) Base SIN filtrar Threshold (solo filtros estructurales que siempre aplican)
+data_fig1_all <- all_compliance %>%
+  filter(X1 %in% countries) %>%
+  left_join(globalSouthCountries %>% dplyr::select(-country), by = c("X1")) %>%
+  filter(complies == 1) %>%
+  group_by(Threshold, X9, globalSouth, X1, `Country Name`) %>%
+  summarise(min_year = min(year), .groups = "drop") %>%
+  filter(X1 %in% unique(c(d11_BP_Int_adop$from, d11_BP_Int_adop$to))) %>%
+  mutate(
+    X9_names = case_when(
+      X9 == "AS" ~ "Asia",
+      X9 == "EU" ~ "Europe",
+      X9 == "NA" ~ "North America",
+      X9 == "AF" ~ "Africa",
+      X9 == "AN" ~ "Antarctica",
+      X9 == "SA" ~ "South America",
+      X9 == "OC" ~ "Oceania"
+    ),
+    globalSouth = ifelse(globalSouth == "Yes", "Global South",
+                         ifelse(globalSouth == "No", "Global North", NA))
+  ) %>%
+  left_join(wb_countries %>% dplyr::select(iso2c, latitude, income_level), by = c("X1" = "iso2c")) %>%
+  mutate(
+    Lat_GS = ifelse(latitude > 0, "Global North", "Global South"),
+    Inc_GS = ifelse(income_level != "High income", "Global South", "Global North")
+  )
+
+# ---- 3) Función que crea el plot para un threshold específico (y lo guarda)
+make_plot_for_threshold <- function(thr, out_dir = "Figures draft/raw output figures") {
+  
+  data_thr <- data_fig1_all %>% filter(Threshold == thr)
+  
+  # Conteos por año / continente / GN-GS
+  data_fig1_GS_thr <- data_thr %>%
+    group_by(X9, X9_names, globalSouth, min_year) %>%
+    summarise(count = n(), .groups = "drop") %>%
+    group_by(globalSouth) %>%
+    arrange(min_year, .by_group = TRUE) %>%
+    mutate(
+      group_total = sum(count),
+      cumulative_number = round(cumsum(count) * 100 / group_total, 2)
+    ) %>%
+    ungroup()
+  
+  # Años 80% (por grupo) para este threshold
+  GN_80 <- suppressWarnings(min(
+    data_fig1_GS_thr$min_year[data_fig1_GS_thr$globalSouth == "Global North" &
+                                data_fig1_GS_thr$cumulative_number >= 80],
+    na.rm = TRUE
+  ))
+  GS_80 <- suppressWarnings(min(
+    data_fig1_GS_thr$min_year[data_fig1_GS_thr$globalSouth == "Global South" &
+                                data_fig1_GS_thr$cumulative_number >= 80],
+    na.rm = TRUE
+  ))
+  
+  # Si en algún threshold no se alcanza 80%, min() devuelve Inf -> lo convertimos a NA
+  GN_80 <- ifelse(is.finite(GN_80), GN_80, NA)
+  GS_80 <- ifelse(is.finite(GS_80), GS_80, NA)
+  
+  vline_data <- data.frame(
+    globalSouth = c("Global North", "Global South"),
+    year_line   = c(GN_80, GS_80)
+  ) %>% filter(!is.na(year_line))
+  
+  label_data <- data.frame(
+    globalSouth = c("Global North", "Global South"),
+    year_line   = c(GN_80, GS_80)
+  ) %>%
+    mutate(
+      label = ifelse(is.na(year_line), "80%: NA", paste0("80%: ", year_line))
+    )
+  
+  p <- data_fig1_GS_thr %>%
+    ggplot(aes(x = min_year, y = count, fill = X9_names)) +
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = continent_colors, drop = FALSE) +
+    geom_vline(
+      data = vline_data,
+      aes(xintercept = year_line),
+      linetype = "dashed", color = "black", linewidth = 1
+    ) +
+    geom_text(
+      data = label_data,
+      aes(label = label),
+      x = -Inf, y = Inf,
+      hjust = -0.05, vjust = 1.2,
+      inherit.aes = FALSE,
+      size = 20,
+      fontface = "bold"
+    ) +
+    labs(
+      x = "",
+      y = "Number of new countries with Internet Access",
+      fill = "Continent"
+    ) +
+    theme_classic() +
+    facet_wrap(~globalSouth, scales = "free_x") +
+    theme(
+      plot.title = element_text(
+        size = 60,
+        face = "bold",
+        hjust = 0.5
+      ),
+      panel.border = element_rect(color = "black", fill = NA, size = 1),
+      axis.text.x = element_text(size = 35, face = "bold"),
+      axis.text.y = element_text(size = 35, face = "bold"),
+      axis.title = element_blank(),
+      legend.title = element_blank(),
+      strip.text = element_text(size = 50, face = "bold"),
+      legend.text = element_text(size = 30),
+      legend.position = "none",
+      plot.margin = margin(t = 1, r = 2, b = 1, l = 1, unit = "cm"),
+      panel.spacing = unit(4, "cm"),
+      strip.placement = "outside"
+    ) +
+    scale_x_continuous(
+      guide = "prism_minor",
+      limits = c(1993, 2015),
+      expand = c(0, 0),
+      minor_breaks = seq(1993, 2015, 1)
+    ) +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 9), breaks = seq(0, 9, 2)) +
+    ggtitle(paste0("Threshold = ", thr))
+  
+  # Guardar
+  out_file <- file.path(out_dir, paste0("1. Fig 1 Internet access of countries overtime - threshold_", thr, ".pdf"))
+  ggsave(out_file, plot = p, width = 20, height = 15, units = "in", limitsize = FALSE)
+  
+  return(p)
+}
+
+# ---- 4) Correr para TODOS los thresholds disponibles (uno por PDF)
+thresholds <- sort(unique(data_fig1_all$Threshold))
+plots_list <- lapply(thresholds, make_plot_for_threshold)
+names(plots_list) <- paste0("thr_", thresholds)
+
+
+#---------------------------------
+# Extra figure Average JSI
+mean_80s <- JSI_comp_USAKX10_v2%>% mutate(key=paste0(from,"_",to)) %>% 
+  filter(key%in%d11_BP_Int$key)%>% 
+  group_by(Year) %>% 
+  summarise(AVGJSI = mean(weight, na.rm = TRUE)) %>% 
+  ungroup()%>%
+  filter(Year >= 1980 & Year <= 1989) %>%
+  summarise(mean_value = mean(AVGJSI, na.rm = TRUE)) %>%
+  pull(mean_value)
+
+
+mean_1994 <- JSI_comp_USAKX10_v2%>% mutate(key=paste0(from,"_",to)) %>% 
+  filter(key%in%d11_BP_Int$key)%>% 
+  filter(Year == 1994) %>%
+  summarise(mean_value = mean(weight, na.rm = TRUE)) %>%
+  pull(mean_value)
+
+
+JSI_comp_USAKX10_v2%>% mutate(key=paste0(from,"_",to)) %>% 
+  filter(key%in%d11_BP_Int$key)%>% 
+  group_by(Year) %>% 
+  summarise(AVGJSI = mean(weight, na.rm = TRUE)) %>% 
+  ggplot(aes(x = Year, y = AVGJSI)) +
+  geom_line(size = 10, color = "purple4") +
+  geom_point(size = 20, color = "purple4") +
+  theme_classic() +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    legend.position = "none",
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_text(size = 70, face = "bold"),
+    axis.text.y = element_text(size = 70, face = "bold"),
+    plot.margin = margin(t = 1, r = 4, b = 1, l = 1, unit = "cm")
+  ) +
+  geom_hline(yintercept = 0) +
+  # media 1980–1989 SOLO hasta 1989
+  annotate(
+    "segment",
+    x = 1980, xend = 1989,
+    y = mean_80s, yend = mean_80s,
+    linetype = "dashed",
+    linewidth = 5
+  ) +
+  
+  # línea vertical en 1989 hasta mean_80s
+  annotate(
+    "segment",
+    x = 1989, xend = 1989,
+    y = 0, yend = mean_80s,
+    linetype = "dashed",
+    linewidth = 5
+  ) +
+  geom_hline(yintercept = mean_1994, linetype = "dashed", size = 5) +
+  geom_hline(yintercept = mean_1994+0.000432, linetype = "dashed", size = 5) +
+  scale_x_continuous(
+    limits = c(1980, 2020),
+    breaks = seq(1980, 2020, 5),
+    expand = c(0, 0),
+    minor_breaks = seq(1980, 2020, 1)
+  )
+ggsave("Figures draft/Figure Extra JSI Average New.pdf",
+       width = 45,                         # Specify the width in inches
+       height = 45,                        # Specify the height in inches
+       units = "in")
